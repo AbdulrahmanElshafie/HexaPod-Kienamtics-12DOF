@@ -372,7 +372,7 @@ void resetAngles(){
   setServoAngle(4, defaultAngle);
   delay(timeDelay);
 
-  etServoAngle(5, defaultAngle);
+  setServoAngle(5, defaultAngle);
   delay(timeDelay);
 
   setServoAngle(6, defaultAngle);
