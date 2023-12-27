@@ -2,6 +2,7 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <localization_inferencing.h>
 
 // Define the PCA9685 PWM controller
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -11,11 +12,11 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVOMAX  600  // Maximum pulse length
 #define SERVO_FREQ 60   // Analog servos run at 60 Hz updates
 
-const char *ssid = "ESP32";
+const char *ssid = "Ankb 28";
 const char *password = "12345678";
 
-int defaultAngle = 90, riseAngle_4_6 = 180, riseAngle_1_3 = 0, rollAngle1 = 110, rollAngle2 = 70,
-timeDelay = 1000;
+int defaultAngle = 90, riseAngle_4_6 = 180, riseAngle_1_3 = 0, rollAngle1 = 120, rollAngle2 = 60,
+timeDelay = 700;
 
 // Variables definitions:
 // defaultAngle --> The default angle for all legs, don't change it!
@@ -25,6 +26,8 @@ timeDelay = 1000;
 // it could move the leg to the back in case your're looking at the back of the Hexa
 // rollAngle2 --> The rolling anlge to move the leg to back (opposite effect for rollAngle1)
 // timeDelay --> The time gap between each part of the movement 
+
+static float features[3];
 
 IPAddress local_ip(192, 168, 1, 1);
 IPAddress gateway(192, 168, 1, 1);
@@ -44,14 +47,18 @@ void turnRight();
 void turnLeft();
 void moveBackward();
 void moveForward();
-void handle_rssi();
+void handle_stand();
+void handle_locate();
+void handle_auto_move();
 
+static int get_signal_data(size_t offset, size_t length, float *out_ptr) {
+    memcpy(out_ptr, features + offset, length * sizeof(float));
+    return 0;
+}
 
 void setPWM(int channel, int on, int off) {
   pwm.setPWM(channel, on, off);
 }
-
-0.
 
 void setServoAngle(int servoNum, int angle) {
   int pulse = map(angle, 0, 180, SERVOMIN, SERVOMAX);
@@ -65,10 +72,9 @@ class Leg{
 
   // Set the pins for rise joint and roll joint of the leg 
   void prepare(int rollBin, int riseBin){
-  rise = riseBin;
-  roll = rollBin;
+    rise = riseBin;
+    roll = rollBin;
   }
-  
 };
 
 // A class defining the the HexaPod object, made for easy use, edits, and useability. Easy setup for HexaPod legs and controlling functionality. 
@@ -86,8 +92,8 @@ class HexaPod{
       leg4.prepare(riseBin4, rollBin4);
       leg5.prepare(riseBin5, rollBin5);
       leg6.prepare(riseBin6, rollBin6);
-}
-
+  }
+  
   void Spin(int direction){
 
     int right = 0, left = 1, oddAngle, evenAngle;
@@ -112,7 +118,7 @@ class HexaPod{
     setServoAngle(leg4.roll, evenAngle);
     setServoAngle(leg6.roll, evenAngle);
     
-    // Roll odd legs to the back, to generate a pushing effect for the HexaPod 
+    // Roll odd legs to the back, to generate a pushiNM,./ng effect for the HexaPod 
     setServoAngle(leg1.roll, oddAngle);
     setServoAngle(leg3.roll, oddAngle);
     setServoAngle(leg5.roll, oddAngle);
@@ -148,7 +154,7 @@ class HexaPod{
     setServoAngle(leg3.rise, defaultAngle);
     setServoAngle(leg5.rise, defaultAngle);
     delay(timeDelay);
-}
+  }
 
   void Step(int direction){
 
@@ -208,8 +214,29 @@ class HexaPod{
     setServoAngle(leg3.rise, defaultAngle);
     setServoAngle(leg5.rise, defaultAngle);
     delay(timeDelay);
-}
+  }
 
+  void dance(){
+    setServoAngle(leg1.roll, rollAngle1 - 10);
+    setServoAngle(leg2.roll, rollAngle1 - 10);
+    setServoAngle(leg3.roll, rollAngle1 - 10);
+
+    setServoAngle(leg4.roll, rollAngle2 + 10);
+    setServoAngle(leg5.roll, rollAngle2 + 10);
+    setServoAngle(leg6.roll, rollAngle2 + 10);
+    
+    delay(timeDelay);
+    
+    setServoAngle(leg1.roll, rollAngle2 + 10);
+    setServoAngle(leg2.roll, rollAngle2 + 10);
+    setServoAngle(leg3.roll, rollAngle2 + 10);
+
+    setServoAngle(leg4.roll, rollAngle1 - 10);
+    setServoAngle(leg5.roll, rollAngle1 - 10);
+    setServoAngle(leg6.roll, rollAngle1 - 10);
+    
+    delay(timeDelay);
+  }
   // use to reset all angles to the defaults and finout the indices for each leg.
   // Should be used only once at the first, then reset the legs on this angle 
   void resetAngles(){
@@ -232,7 +259,7 @@ class HexaPod{
   setServoAngle(leg3.roll, defaultAngle);
   setServoAngle(leg5.roll, defaultAngle);
   delay(timeDelay);
-}
+  }
 
   // use this to make the HexaPod Stand up and wake up :)
   // Should only be used when starting the Bot from sleeping (idle)
@@ -257,6 +284,7 @@ class HexaPod{
   setServoAngle(leg3.rise, defaultAngle);
   setServoAngle(leg5.rise, defaultAngle);
   delay(timeDelay);
+  
   // Stand Up Pt2
 
   // Rise the even legs of the ground 
@@ -276,8 +304,194 @@ class HexaPod{
   setServoAngle(leg4.rise, defaultAngle);
   setServoAngle(leg6.rise, defaultAngle);
   delay(timeDelay);
-}
+  }
+
+  int calc_distance(int rssi){
+    float env_factor = 1;
+    int rssi_1m_distance = -40;
+
+    float distance = pow(10, (rssi_1m_distance-rssi)/(10*env_factor));
+
+    Serial.print("distance ");
+    Serial.print(distance);
+    Serial.print(" RSSI ");
+    Serial.print(rssi);
+    Serial.println(" ");
+
+    return distance;
+  }
+
+  int find_target(String target){
+    int numNetworks = WiFi.scanNetworks();
+    for (int i = 0; i < numNetworks; i++){
+
+      if(WiFi.SSID(i) == target){
+          return i;
+      }
+    }
+  }
+
+  int locate_target(String target){
+    int controllerIndex = find_target(target);
+    int controllerDistance =  calc_distance(WiFi.RSSI(controllerIndex));
+-
+    return controllerDistance;
+  }
+
+  void go_to_target(String target){
+    int distance = locate_target(target), new_distance = distance;
+    int forward = 0, backward = 1, right = 0, direction = 2;
+
+    while(distance > 1){
+
+      if(direction == 2){
+
+        Step(forward);
+        new_distance = locate_target(target);
+
+        if(new_distance < distance + 1.){
+          direction = forward;
+          distance = new_distance;
+          continue;
+        } else {
+          standUp();
+          if(new_distance > distance + 1.){
+            Step(backward);
+          } else if (new_distance == distance + 1.) {
+            Spin(right);
+            continue;
+          }
+        }
+
+        Step(backward);
+        new_distance = locate_target(target);
+
+        if(new_distance < distance + 1.){
+          direction = backward;
+          distance = new_distance;
+          continue;
+        } else {
+          standUp();
+          if(new_distance > distance + 1.){
+            Step(forward);
+          } else if (new_distance == distance + 1.) {
+            Spin(right);
+            continue;
+          }
+        }
+
+        Spin(right);
+
+      } else if (direction == forward) {
+        
+        Step(forward);
+        new_distance = locate_target(target);
+
+        if(new_distance < distance + 1.){
+          direction = forward;
+          distance = new_distance;
+          continue;
+        } else {
+          standUp();
+          if(new_distance > distance + 1.){
+            Step(backward);
+            direction = 2;
+          } else if (new_distance == distance + 1.) {
+            Spin(right);
+            direction = 2;
+            continue;
+          }
+        }
+
+      } else {
+        
+        Step(backward);
+        new_distance = locate_target(target);
+
+        if(new_distance < distance + 1.){
+          direction = backward;
+          distance = new_distance;
+          continue;
+        } else {
+          standUp();
+          if(new_distance > distance + 1.){
+            Step(forward);
+            direction = 2;
+          } else if (new_distance == distance + 1.) {
+            Spin(right);
+            direction = 2;
+            continue;
+          }
+        }
+           
+      }
+    }
+    dance();
+    dance();
+    dance();
+    standUp();
+    Serial.println("Success");
+  }
+
+  void my_location(int rssi1, int rssi2, int rssi3){
+    features[0] = rssi1;
+    features[1] = rssi2;
+    features[2] = rssi3;
+
+    signal_t signal;            // Wrapper for raw input buffer
+    ei_impulse_result_t result = { 0 }; // Used to store inference output
+    EI_IMPULSE_ERROR res;       // Return code from inference
+
+    signal.total_length = sizeof(features) / sizeof(features[0]);
+    signal.get_data = &get_signal_data;
+
+    res = run_classifier(&signal, &result, true);
+
+    Serial.print("I'm in ");
+    Serial.println(result.timing.classification);
+  
+  }
+  void my_coordinates(int d1, int d2, int d3, 
+                      int x1, int x2, int x3,
+                      int y1, int y2, int y3){
+
+    float x = (pow(x1, 2) + (pow(d1, 2) - pow(d1, 2))) / (2 * x2);
+    float y = (pow(y2, 2) + (pow(d1, 2) - pow(d3, 2))) / (2 * y2);
+
+    Serial.print("My Coordinates: ( ");
+    Serial.print(x);
+    Serial.print(", ");
+    Serial.print(y);
+    Serial.println(" )");
+  }
 };
+
+
+void scanNetworks(String ap1, String ap2, String ap3) {
+ int numNetworks = WiFi.scanNetworks();
+ int rssi1 = 0, rssi2 = 0, rssi3 = 0;
+
+  if (numNetworks != 0){
+    for (int i = 0; i < numNetworks; ++i)
+    {
+          
+          if(WiFi.SSID(i) == ap1)
+            rssi1 = WiFi.RSSI(i);
+          if(WiFi.SSID(i) == ap2)
+            rssi2 = WiFi.RSSI(i);
+          if(WiFi.SSID(i) == ap3)
+            rssi3 = WiFi.RSSI(i);
+
+    }
+  }
+  Serial.print(rssi1);
+  Serial.print(" ");
+  Serial.print(rssi2);
+  Serial.print(" ");
+  Serial.print(rssi3);
+  Serial.println(" ");
+}
+
 
 // Create HexaPod object 
 HexaPod hexa;
@@ -288,7 +502,8 @@ void setup(){
 
   Serial.begin(9600);
 
-
+  WiFi.mode(WIFI_AP_STA);	
+  WiFi.disconnect();
 
   WiFi.softAP(ssid, password);  
   WiFi.softAPConfig(local_ip, gateway, subnet);
@@ -298,7 +513,9 @@ void setup(){
   server.on("/backward", HTTP_GET, handle_backward);
   server.on("/left", HTTP_GET, handle_left);
   server.on("/right", HTTP_GET, handle_right);
-  server.on("/rssi", HTTP_GET, handle_rssi);
+  server.on("/locate", HTTP_GET, handle_locate);
+  server.on("/stand", HTTP_GET, handle_stand);
+  server.on("/auto", HTTP_GET, handle_auto_move);
   server.onNotFound(handle_NotFound);
 
   server.begin();
@@ -327,38 +544,44 @@ void handle_OnConnect(){
   server.send(200, "text/html", SendHTML());
 }
 
+void handle_stand(){
+  hexa.standUp();
+  server.send(200, "text/html", SendHTML());
+}
+
 void handle_forward(){
   int forward = 0;
   hexa.Step(forward);
-  hexa.resetAngles();
   server.send(200, "text/html", SendHTML());
 }
 
 void handle_backward(){
   int backward = 1;
   hexa.Step(backward);
-  hexa.resetAngles();
   server.send(200, "text/html", SendHTML());
 }
 
 void handle_left(){
   int left = 1;
   hexa.Spin(left);
-  hexa.resetAngles();
   server.send(200, "text/html", SendHTML());
 }
 
 void handle_right(){
   int right = 0;
   hexa.Spin(right);
-  hexa.resetAngles();
   server.send(200, "text/html", SendHTML());
 }
 
-void handle_rssi(){
+void handle_auto_move(){
+  hexa.go_to_target("ELSHAF3Y_plus");
+  server.send(200, "text/html", SendHTML());
+}
+
+void handle_locate(){
   String rssiHTML = "<!DOCTYPE html> <html>\n";
   rssiHTML += "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
-  rssiHTML += "<title>Wi-Fi RSSI</title>\n";
+  rssiHTML += "<title>My Location</title>\n";
   rssiHTML += "<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: left;}\n";
   rssiHTML += "body{margin-top: 20px; margin-left: 20px;} h2 {color: #444444;margin-bottom: 20px;}\n";
   rssiHTML += "ul {list-style-type: none;margin: 0;padding: 0;}\n";
@@ -369,14 +592,42 @@ void handle_rssi(){
   rssiHTML += "<h2>Wi-Fi RSSI Values</h2>\n";
 
   int numNetworks = WiFi.scanNetworks();
+  int rssi1 = -100, rssi2 = -100, rssi3 = -100, d1 = 20, d2 = 20, d3 = 20;
 
   rssiHTML += "<ul>\n";
-  for (int i = 0; i < numNetworks; i++){
-    rssiHTML += "<li>";
-    rssiHTML += "SSID: " + WiFi.SSID(i) + " | RSSI: " + String(WiFi.RSSI(i));
-    rssiHTML += "</li>\n";
-  }
+    for (int i = 0; i < numNetworks; ++i){
+          
+          if(WiFi.SSID(i) == "ELSHAF3Y_plus"){
+            rssi1 = WiFi.RSSI(i);
+            d1 = hexa.calc_distance(rssi1);
+            rssiHTML += "<li>";
+            rssiHTML += "SSID: " + WiFi.SSID(i) + " | RSSI: " + String(rssi1) + " | Distance: " + String(d1);
+            rssiHTML += "</li>\n";
+          }
+          if(WiFi.SSID(i) == "ELSHAF3Y"){
+            rssi2 = WiFi.RSSI(i);
+            d2 = hexa.calc_distance(rssi2);
+            rssiHTML += "<li>";
+            rssiHTML += "SSID: " + WiFi.SSID(i) + " | RSSI: " + String(rssi2) + " | Distance: " + String(d2);
+            rssiHTML += "</li>\n";
+          }
+          if(WiFi.SSID(i) == "body"){
+            rssi3 = WiFi.RSSI(i);
+            d3 = hexa.calc_distance(rssi3);
+            rssiHTML += "<li>";
+            rssiHTML += "SSID: " + WiFi.SSID(i) + " | RSSI: " + String(rssi3) + " | Distance: " + String(d3);
+            rssiHTML += "</li>\n";
+          }
+    }
+  
+  hexa.my_location(rssi1, rssi2, rssi3);
+  hexa.my_coordinates(d1, d2, d3, 
+                      0, 4, 20,
+                      0, 0, 20);
+
+  
   rssiHTML += "</ul>\n";
+  rssiHTML += "";
 
   rssiHTML += "</body>\n";
   rssiHTML += "</html>\n";
@@ -402,13 +653,18 @@ String SendHTML(){
   html += "</style>\n";
   html += "</head>\n";
   html += "<body>\n";
-  html += "<h1>Hex Pod Control</h1>\n";
+  html += "<h1>Hexa Pod Control</h1>\n";
   html += "<a class=\"button button-forward\" href=\"/forward\">Forward</a>\n";
   html += "<br>\n";
   html += "<a class=\"button button-left\" href=\"/left\">Left</a>";
   html += "<a class=\"button button-right\" href=\"/right\">Right</a>\n";
   html += "<br>\n";
   html += "<a class=\"button button-backward\" href=\"/backward\">Backward</a>\n";
+  html += "<br>\n";
+  html += "<a class=\"button \" href=\"/locate\">My Location</a>\n";
+  html += "<br>\n";
+  html += "<a class=\"button \" href=\"/stand\">Stand</a>\n";
+  html += "<a class=\"button \" href=\"/auto\">Auto Move</a>\n";
   html += "</body>\n";
   html += "</html>\n";
   return html;
