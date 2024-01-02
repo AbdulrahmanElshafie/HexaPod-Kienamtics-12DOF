@@ -43,6 +43,25 @@ The code is organized into distinct classes and functions:
 - **Leg Class**: Defines individual legs of the HexaPod, allowing easy configuration of joint pins.
 - **HexaPod Class**: Manages all six legs and their movements, providing methods for precise control and coordination.
 
+### Functions
+#### calc_distance(int rssi)
+This function calculates the estimated distance from the WiFi access point based on the received signal strength indicator (RSSI) value. It uses an environmental factor and a reference RSSI value at 1 meter (rssi_1m_distance) to estimate the distance in meters. The environment factor is used to tell the estimated environmental effect in the received signal strength. 
+
+#### find_target(String target)
+This function scans the available WiFi networks and searches for a specific target network name. It returns the index of the found target network in the scan results.
+
+#### locate_target(String target)
+Utilizing the find_target() function, this function determines the distance to the specified target WiFi network using its RSSI value. It combines the RSSI value retrieval and distance calculation to the target network.
+
+#### go_to_target(String target)
+This function initiates movement towards the specified target WiFi network. It continually checks the distance to the target and adjusts the movement direction (forward, backward, or spin) based on the signal strength variations. Initially, the robot tries to find which direction will lead to the target by trying the 4 available directions. When he finds the direction that leads to his target to starts moving towards it until one happens, either reaching the target or finding that the distance doesn't change so he turns right and checks the 2 directions to find which leads to the target. Or he moves away from it so then he tries to re-locate itself and search for the direction again. 
+
+#### my_location(int rssi1, int rssi2, int rssi3)
+This function takes three RSSI values from different WiFi access points as inputs. It constructs a signal with these RSSI values and performs inference using a pre-trained machine-learning model. The inference provides an estimation of the device's location based on the provided RSSI values.
+
+#### my_coordinates(int d1, int d2, int d3, int x1, int x2, int x3, int y1, int y2, int y3)
+This function computes the coordinates of the device based on the received distances (d1, d2, d3) and reference coordinates (x1, x2, x3, y1, y2, y3). It uses a mathematical formula to estimate the device's x and y coordinates in the specified environment.
+
 ### Usage Instructions
 
 1. Upload the code to the HexaPod's control unit.
