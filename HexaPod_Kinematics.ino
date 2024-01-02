@@ -310,7 +310,7 @@ class HexaPod{
     float env_factor = 1;
     int rssi_1m_distance = -40;
 
-    float distance = pow(10, (rssi_1m_distance-rssi)/(10*env_factor));
+    int distance = pow(10, (rssi_1m_distance-rssi)/(10*env_factor));
 
     Serial.print("distance ");
     Serial.print(distance);
@@ -334,13 +334,13 @@ class HexaPod{
   int locate_target(String target){
     int controllerIndex = find_target(target);
     int controllerDistance =  calc_distance(WiFi.RSSI(controllerIndex));
--
+
     return controllerDistance;
   }
 
   void go_to_target(String target){
     int distance = locate_target(target), new_distance = distance;
-    int forward = 0, backward = 1, right = 0, direction = 2;
+    int forward = 0, backward = 1, right = 0, direction = 2, steps = 0;
 
     while(distance > 1){
 
@@ -386,6 +386,7 @@ class HexaPod{
         
         Step(forward);
         new_distance = locate_target(target);
+        steps++;
 
         if(new_distance < distance + 1.){
           direction = forward;
@@ -396,10 +397,11 @@ class HexaPod{
           if(new_distance > distance + 1.){
             Step(backward);
             direction = 2;
-          } else if (new_distance == distance + 1.) {
+            steps = 0;
+          } else if (new_distance == distance + 1. && steps == 2) {
             Spin(right);
             direction = 2;
-            continue;
+            steps = 0;
           }
         }
 
@@ -407,6 +409,7 @@ class HexaPod{
         
         Step(backward);
         new_distance = locate_target(target);
+        steps++;
 
         if(new_distance < distance + 1.){
           direction = backward;
@@ -417,10 +420,11 @@ class HexaPod{
           if(new_distance > distance + 1.){
             Step(forward);
             direction = 2;
-          } else if (new_distance == distance + 1.) {
+            steps = 0;
+          } else if (new_distance == distance + 1.&& steps == 2) {
             Spin(right);
             direction = 2;
-            continue;
+            steps = 0;
           }
         }
            
@@ -574,7 +578,7 @@ void handle_right(){
 }
 
 void handle_auto_move(){
-  hexa.go_to_target("ELSHAF3Y_plus");
+  hexa.go_to_target("nzlawy");
   server.send(200, "text/html", SendHTML());
 }
 
